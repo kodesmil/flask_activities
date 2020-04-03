@@ -3,7 +3,6 @@ from flask_apispec import marshal_with, doc
 from kodesmil_common.auth import requires_auth
 from marshmallow import fields, ValidationError, missing
 
-from kodesmil_common.user_schema import get_user
 from . import db
 from .fit.fit import get_heart_minutes, get_distances
 from .models import ActivitySchema
@@ -35,9 +34,9 @@ def ping_points(token):
 @marshal_with(ActivitySchema())
 @content.route('/activities', methods=['POST'])
 @requires_auth
-def add_activity(*args, **kwargs):
+def add_activity(user_id):
     raw_data = request.get_json()
-    raw_data['user_id'] = kwargs['user_id']
+    raw_data['user_id'] = user_id
     instance = ActivitySchema().load(raw_data)
     result = db.activities.insert_one(instance)
 
@@ -52,9 +51,9 @@ def add_activity(*args, **kwargs):
 @marshal_with(ActivitySchema())
 @content.route('/activities', methods=['GET'])
 @requires_auth
-def get_last_activity(*args, **kwargs):
+def get_last_activity(user_id):
     schema = ActivitySchema()
-    query = db.activities.find({'user_id': kwargs['user_id']}).sort('_id', -1).limit(1)
+    query = db.activities.find({'user_id': user_id}).sort('_id', -1).limit(1)
     instance = schema.dump(
         query[0]
     )
@@ -67,12 +66,11 @@ def get_last_activity(*args, **kwargs):
 @marshal_with(ActivitySchema())
 @content.route('/sync/google-fit', methods=['POST'])
 # @requires_auth
-def add_google_fit_activity(*args, **kwargs):
+def add_google_fit_activity(user_id):
     request_data = request.get_json()
     credentials = AccessTokenCredentials(request_data['access_token'], 'Flask/1.0')
-    user = get_user(db, request_data)
-    data = get_heart_minutes(credentials, user)
-    data.extend(get_distances(credentials, user))
+    data = get_heart_minutes(credentials, user_id)
+    data.extend(get_distances(credentials, user_id))
     activities = ActivitySchema(many=True).load(data)
     result = db.activities.insert_many(activities)
     if result.acknowledged:
